@@ -68,6 +68,8 @@ pub enum Error {
     /// timeout error that is sent (e.g. UsbError can contain a timeout), and
     /// also this is usually a fatal one.
     PacketTimeout,
+    /// Write failed to send expected number of bytes
+    WriteFailed,
     /// Other fatal error, usually a problem with the library itself, or
     /// a device support issue. File a bug if you encounter this.
     Other(&'static str),
@@ -102,6 +104,7 @@ impl std::fmt::Display for Error {
             Error::SerialPortError(_) => "Serial error",
             Error::NotFound => "Glasses not found",
             Error::PacketTimeout => "Packet timeout",
+            Error::WriteFailed => "Write failed",
             Error::Other(s) => s,
         })
     }

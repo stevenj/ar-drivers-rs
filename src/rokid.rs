@@ -4,6 +4,43 @@
 
 //! Rokid Air AR glasses support. See [`RokidAir`]
 //! It only uses [`rusb`] for communication.
+//! 
+
+
+// # Rokid Commands
+//
+//         Request, Index,   Value, Data
+// ## Display Mode
+//
+// * Get -    0x81,  0x01,    0x00, [Mode : u8]  (Value could also be 1 when ?? == (0x162f)??)
+// * Set -    0x01,  0x01, mode:u8, [0x01: u8]
+//
+// ## Volume
+//
+// * Get -    0x81,  0x0a,    0x00, [Volume : u8: 0x40]
+// * Set -    0x01,  0x0a,  vol:u8, [0x01: u8]
+//
+// ## Brightness
+//
+// * Get -    0x82,  0x02,    0x00, [Brightness : u8]
+// * Set -    0x02,  0x02, (b1 | b2) | u16, [0x01: u8]
+//
+// ## HArdware Stats
+//
+// * FW Version - 0x81, 0x00, 0x00, [0x40 bytes]
+// * HW Version - 0x81, 0x00, 0x800, [0x10 bytes]
+// * Optical ID - 0x81, 0x00, 0x700, [0x40 bytes]
+// * PCBA       - 0x81, 0x00, 0x200, [0x40 bytes]
+// * Seed       - 0x81, 0x00, 0xa00, [0x40 bytes]
+// * Serial#    - 0x81, 0x00, 0x100, [0x40 bytes]
+// * TypeID     - 0x81, 0x00, 0x300, [0x40 bytes]
+// 
+// ## Interesting Commands
+//
+// * Unlock - 0x01, 0x02, 0x400, "E22F1731F48B45E99845ECB28192A17D"+0x00 (0x21 bytes)
+//
+// * Get Keymask Node - 0x81, 0x00, 0x3200, [0x1 bytes]
+// * Set Keymask Node - 0x01, 0x00, 0x3200, [0x1 bytes]
 
 use std::{collections::VecDeque, time::Duration};
 
@@ -122,6 +159,7 @@ impl ARGlasses for RokidAir {
         }
         Ok(self.pending_events.pop_front().unwrap())
     }
+
 
     fn get_display_mode(&mut self) -> Result<DisplayMode> {
         let mut result = [0; 0x40];
@@ -337,5 +375,141 @@ impl RokidAir {
                 GlassesEvent::ProximityNear
             });
         }
+    }
+
+    /// Read data from the glasses.
+    pub fn read_value(&mut self, request:u8, index:u16, value: u16) -> Result<[u8; 0x40]> {
+        let expected = 0x40;
+        let mut result = [0u8; 0x40]; // Maximum size of any response.
+        let rxd = self.device_handle.read_control(
+            request_type(
+                rusb::Direction::In,
+                rusb::RequestType::Vendor,
+                rusb::Recipient::Device,
+            ),
+            request,
+            value,
+            index,
+            &mut result,
+            TIMEOUT,
+        )?;
+        if rxd != expected {
+            println!("Expected {} bytes, got {}", expected, rxd);
+            return Err(Error::Other("Protocol error"));
+        }
+        Ok(result)
+    }
+
+    /// Write a conbtrol value to the glasses
+    pub fn write_value(&mut self, request: u8, index:u16, value: u16, data: &[u8]) -> Result<()> {
+        let sent = self.device_handle.write_control(
+            request_type(
+                rusb::Direction::Out,
+                rusb::RequestType::Vendor,
+                rusb::Recipient::Device,
+            ),
+            request,
+            value,
+            index,
+            data,
+            TIMEOUT,    
+            
+        )?;
+        if data.len() != sent {
+            return Err(Error::WriteFailed);
+        }
+        Ok(())
+    }
+
+    /// * HW Version - 0x81, 0x00, 0x800, [0x10 bytes]
+    pub fn hw_version(&mut self) -> String {
+        convert_byte_array(self.read_value(0x81, 0x0, 0x800))
+    }
+    /// * PCBA       - 0x81, 0x00, 0x200, [0x40 bytes]
+    pub fn pcba_version(&mut self) -> String {
+        convert_byte_array(self.read_value(0x81, 0x0, 0x200))
+    }
+    /// * Optical ID - 0x81, 0x00, 0x700, [0x40 bytes]
+    pub fn optical_id(&mut self) -> String {
+        convert_byte_array(self.read_value(0x81, 0x0, 0x700))
+    }
+    /// * TypeID     - 0x81, 0x00, 0x300, [0x40 bytes]
+    pub fn type_id(&mut self) -> String {
+        convert_byte_array(self.read_value(0x81, 0x0, 0x300))
+    }
+    /// * Serial#    - 0x81, 0x00, 0x100, [0x40 bytes]
+    pub fn serial_no(&mut self) -> String {
+        convert_byte_array(self.read_value(0x81, 0x0, 0x100))
+    }
+    /// * FW Version - 0x81, 0x00,  0x00, [0x40 bytes]
+    pub fn fw_version(&mut self) -> String {
+        convert_byte_array(self.read_value(0x81, 0x0, 0x0))
+    }
+    /// * Seed       - 0x81, 0x00, 0xa00, [0x40 bytes]
+    pub fn seed(&mut self) -> String {
+        convert_byte_array(self.read_value(0x81, 0x0, 0xa00))
+    }
+
+    /// Get the raw display mode
+    pub fn get_raw_display_mode(&mut self) -> String {
+        convert_data_response(self.read_value(0x81, 0x01, 0x0))
+    }
+
+    /// Set the raw display mode
+    pub fn set_raw_display_mode(&mut self, mode1:u8, mode2:u8) -> Result<()> {
+        self.write_value(0x01, 0x01, mode1.into(), &[mode2])
+    }
+
+    /// Get the volume
+    pub fn get_volume(&mut self) -> String {
+        convert_data_response(self.read_value(0x81, 0x0a, 0x0))
+    }
+
+    /// Set the volume
+    pub fn set_volume(&mut self, volume: u8) -> Result<()> {
+        // Volume must be between 0 and 10.
+        let volume = std::cmp::min(std::cmp::max(volume, 0), 10);
+        let volume:u16 = (volume * 10).into();
+        let data = [0x00];
+        self.write_value(0x01, 0x0a, volume.into(), &data)
+    }
+
+    /// Get the brightness
+    pub fn get_brightness(&mut self) -> String {
+        convert_data_response(self.read_value(0x81, 0x02, 0x0))
+    }
+
+    /// Set the brightness
+    pub fn set_brightness(&mut self, brightness: u8) -> Result<()> {
+        // brightness must be between 1 and 6
+        let brightness = std::cmp::min(std::cmp::max(brightness, 1), 6);
+        let brightness:u16 = match brightness {
+            1 => 10,
+            2 => 30,
+            3 => 45,
+            4 => 60,
+            5 => 80,
+            _ => 100            
+        };
+        let data = [0x00];
+        self.write_value(0x02, 0x02, brightness, &data)
+    }
+    
+}
+
+fn convert_byte_array(byte_array: Result<[u8; 0x40]>) -> String {
+    match byte_array {
+        Ok(byte_array) => match String::from_utf8(byte_array.to_vec()) {
+            Ok(s) => s,
+            Err(_) => byte_array.iter().map(|b| format!("{:02X}", b)).collect::<Vec<String>>().join(", ")
+        },
+        Err(e) => format!("Unknown ({})",e)
+    }
+}
+
+fn convert_data_response(byte_array: Result<[u8; 0x40]>) -> String {
+    match byte_array {
+        Ok(byte_array) => byte_array.iter().map(|b| format!("{:02X}", b)).collect::<Vec<String>>().join(", "),
+        Err(e) => format!("Unknown ({})",e)
     }
 }
