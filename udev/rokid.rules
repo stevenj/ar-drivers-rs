@@ -1,1 +1,1 @@
-SUBSYSTEMS=="usb", ATTRS{idVendor}=="04d2", ATTRS{idProduct}=="162f", GROUP="input", MODE="0666"
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="04d2", ATTRS{idProduct}=="162f", GROUP="input", MODE="0666", RUN+="/opt/rokid/init_rokid.sh"
