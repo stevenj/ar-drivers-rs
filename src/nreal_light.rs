@@ -153,9 +153,9 @@ impl NrealLight {
     pub const OV580_PID: u16 = 0x0680;
 
     /// Unique camera type name for the left SLAM camera
-    pub const LEFT_SLAM_CAM: &str = "Nreal Light SLAM left";
+    pub const LEFT_SLAM_CAM: &'static str = "Nreal Light SLAM left";
     /// Unique camera type name for the right SLAM camera
-    pub const RIGHT_SLAM_CAM: &str = "Nreal Light SLAM right";
+    pub const RIGHT_SLAM_CAM: &'static str = "Nreal Light SLAM right";
 
     const DISPLAY_TILT: f64 = -0.265;
     const DISPLAY_DIVERGENCE: f64 = 0.02;
@@ -642,7 +642,7 @@ impl NrealLightSlamCamera {
         Self::new_common(get_device_vid_pid(NrealLight::OV580_VID, NrealLight::OV580_PID)?.open()?)
     }
 
-    fn new_common(mut device_handle: rusb::DeviceHandle<rusb::GlobalContext>) -> Result<Self> {
+    fn new_common(device_handle: rusb::DeviceHandle<rusb::GlobalContext>) -> Result<Self> {
         const UVC_SET_CUR: u8 = 0x01;
         const UVC_VS_COMMIT_CONTROL: u16 = 0x02;
         device_handle.set_auto_detach_kernel_driver(true)?;
